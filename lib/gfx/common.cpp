@@ -1561,6 +1561,9 @@ wgpu::Sampler sampler_ref(const wgpu::SamplerDescriptor& descriptor) {
   std::lock_guard lock{g_samplerCacheMutex};
   auto it = g_cachedSamplers.find(id);
   if (it == g_cachedSamplers.end()) {
+    Log.debug("sampler: aniso={} min={} mag={} mip={}", descriptor.maxAnisotropy,
+             static_cast<int>(descriptor.minFilter), static_cast<int>(descriptor.magFilter),
+             static_cast<int>(descriptor.mipmapFilter));
     it = g_cachedSamplers.try_emplace(id, g_device.CreateSampler(&descriptor)).first;
   }
   return it->second;
