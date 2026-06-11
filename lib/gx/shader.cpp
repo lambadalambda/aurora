@@ -929,7 +929,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
           "\n    let in_vidx = iidx;"
           "\n    let in_pos = {};"
           "\n    let in_pnmtxidx = {};"
-          "\n    let mv_pos = vec4f(in_pos, 1.0) * ubuf.postex_mtx[in_pnmtxidx];",
+          "\n    let mv_pos = vec4f(in_pos, 1.0) * fetch_mtx34(ubuf.mtx_start[in_pnmtxidx]);",
           attr_load(config, GX_VA_POS, "in_vidx"sv), attr_load(config, GX_VA_PNMTXIDX, "in_vidx"sv));
     } else {
       // GX_LINES / GX_LINESTRIP: each instance = two vertices, expand to quad
@@ -944,8 +944,8 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
           "\n    let pnmtxidx_a = {};"
           "\n    let pnmtxidx_b = {};"
           "\n    let in_pnmtxidx = select(pnmtxidx_a, pnmtxidx_b, use_b);"
-          "\n    let mv_pos_a = vec4f(pos_a, 1.0) * ubuf.postex_mtx[pnmtxidx_a];"
-          "\n    let mv_pos_b = vec4f(pos_b, 1.0) * ubuf.postex_mtx[pnmtxidx_b];"
+          "\n    let mv_pos_a = vec4f(pos_a, 1.0) * fetch_mtx34(ubuf.mtx_start[pnmtxidx_a]);"
+          "\n    let mv_pos_b = vec4f(pos_b, 1.0) * fetch_mtx34(ubuf.mtx_start[pnmtxidx_b]);"
           "\n    let mv_pos = select(mv_pos_a, mv_pos_b, use_b);",
           config.lineMode == 1 ? 2 : 1, attr_load(config, GX_VA_POS, "vidx_a"sv),
           attr_load(config, GX_VA_POS, "vidx_b"sv), attr_load(config, GX_VA_PNMTXIDX, "vidx_a"sv),
@@ -988,7 +988,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
 
   if (config.lineMode == 0) {
     vtxXfrAttrsPre += fmt::format(
-        "\n    let mv_pos = vec4f({}, 1.0) * ubuf.postex_mtx[in_pnmtxidx];"
+        "\n    let mv_pos = vec4f({}, 1.0) * fetch_mtx34(ubuf.mtx_start[in_pnmtxidx]);"
         "\n    out.pos = vec4f(mv_pos, 1.0) * ubuf.proj;",
         vtx_attr(config, GX_VA_POS));
   } else if (config.lineMode == 3) {
@@ -1025,7 +1025,7 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
     vtxXfrAttrsPre += "\n    out.pos.z += out.pos.w;";
   }
   vtxXfrAttrsPre += fmt::format(
-      "\n    let nrm_tmp = vec4f({}, 0.0) * ubuf.nrm_mtx[in_pnmtxidx];"
+      "\n    let nrm_tmp = vec4f({}, 0.0) * fetch_mtx34(ubuf.mtx_start[20u + in_pnmtxidx]);"
       "\n    let mv_nrm = select(nrm_tmp, normalize(nrm_tmp), dot(nrm_tmp, nrm_tmp) > 1e-10);",
       vtx_attr(config, GX_VA_NRM));
   if constexpr (EnableNormalVisualization) {
@@ -1034,8 +1034,9 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
   }
 
   uniBufAttrs += "\n    proj: mat4x4f,";
-  uniBufAttrs += fmt::format("\n    postex_mtx: array<mat3x4f, {}>,", MaxPnMtx + MaxTexMtx);
-  uniBufAttrs += fmt::format("\n    nrm_mtx: array<mat3x4f, {}>,", MaxPnMtx);
+  // Storage buffer byte offsets for the matrix palette: [0,10) position,
+  // [10,20) texture, [20,30) normal matrices; entries 30/31 are padding.
+  uniBufAttrs += fmt::format("\n    mtx_start: array<u32, {}>,", MaxPnMtx + MaxTexMtx + MaxPnMtx + 2);
   std::string fragmentFnPre;
   std::string fragmentFn;
 
@@ -1171,8 +1172,8 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       const u32 lightIdx = tcg.type - GX_TG_BUMP0;
       vtxXfrAttrs += fmt::format(
           "\n    let bump_ldir{0} = normalize(ubuf.lights[{1}].pos - mv_pos);"
-          "\n    let bump_tan{0} = vec4f(in_tangent, 0.0) * ubuf.nrm_mtx[in_pnmtxidx];"
-          "\n    let bump_bin{0} = vec4f(in_binrm, 0.0) * ubuf.nrm_mtx[in_pnmtxidx];"
+          "\n    let bump_tan{0} = vec4f(in_tangent, 0.0) * fetch_mtx34(ubuf.mtx_start[20u + in_pnmtxidx]);"
+          "\n    let bump_bin{0} = vec4f(in_binrm, 0.0) * fetch_mtx34(ubuf.mtx_start[20u + in_pnmtxidx]);"
           "\n    out.tex{0}_uv = tc{2}_proj.xy + vec2f(dot(bump_ldir{0}, bump_tan{0}), dot(bump_ldir{0}, "
           "bump_bin{0}));",
           i, lightIdx, tcg.embossSrc);
@@ -1198,12 +1199,12 @@ std::string build_shader_source(const ShaderConfig& config) noexcept {
       UNLIKELY FATAL("unhandled tcg src {}", underlying(tcg.src));
     if (tcg.type == GX_TG_MTX2x4 || tcg.type == GX_TG_MTX3x4) {
       if (info.indexAttr.test(GX_VA_TEX0MTXIDX + i)) {
-        vtxXfrAttrs += fmt::format("\n    var tc{0}_tmp = tc{0} * ubuf.postex_mtx[in_texmtxidx{0} / 3u];", i);
+        vtxXfrAttrs += fmt::format("\n    var tc{0}_tmp = tc{0} * fetch_mtx34(ubuf.mtx_start[in_texmtxidx{0} / 3u]);", i);
       } else if (tcg.mtx == GX_IDENTITY) {
         vtxXfrAttrs += fmt::format("\n    var tc{0}_tmp = tc{0}.xyz;", i);
       } else {
         u32 texMtxIdx = (tcg.mtx) / 3;
-        vtxXfrAttrs += fmt::format("\n    var tc{0}_tmp = tc{0} * ubuf.postex_mtx[{1}];", i, texMtxIdx);
+        vtxXfrAttrs += fmt::format("\n    var tc{0}_tmp = tc{0} * fetch_mtx34(ubuf.mtx_start[{1}]);", i, texMtxIdx);
       }
       if (tcg.type == GX_TG_MTX2x4) {
         vtxXfrAttrs += fmt::format("\n    tc{0}_tmp.z = 1.0f;", i);
@@ -1889,6 +1890,16 @@ fn tev_overflow_vec3f(in: vec3f) -> vec3f {{
 fn tev_overflow_vec4f(in: vec4f) -> vec4f {{
   let byte_space = in * 255.0;
   return (byte_space - floor(byte_space / 256.0) * 256.0) / 255.0;
+}}
+
+// Fetches a matrix palette entry from the storage buffer. `offset` is the
+// byte offset written by build_uniform into ubuf.mtx_start.
+fn fetch_mtx34(offset: u32) -> mat3x4f {{
+  let i = offset / 4u;
+  return mat3x4f(
+    vec4f(bitcast<f32>(abuf[i]), bitcast<f32>(abuf[i + 1u]), bitcast<f32>(abuf[i + 2u]), bitcast<f32>(abuf[i + 3u])),
+    vec4f(bitcast<f32>(abuf[i + 4u]), bitcast<f32>(abuf[i + 5u]), bitcast<f32>(abuf[i + 6u]), bitcast<f32>(abuf[i + 7u])),
+    vec4f(bitcast<f32>(abuf[i + 8u]), bitcast<f32>(abuf[i + 9u]), bitcast<f32>(abuf[i + 10u]), bitcast<f32>(abuf[i + 11u])));
 }}
 
 {8}

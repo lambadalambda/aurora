@@ -289,6 +289,10 @@ static Range push_uniform(const T& data) {
   return push_uniform(reinterpret_cast<const uint8_t*>(&data), sizeof(T));
 }
 Range push_storage(const uint8_t* data, size_t length);
+// Storage push with caller-chosen alignment. Only valid for data whose
+// offset reaches the shader through a uniform value (e.g. the matrix
+// palette), not through SetBindGroup dynamic offsets.
+Range push_storage_unaligned(const uint8_t* data, size_t length, size_t alignment);
 template <typename T>
 static Range push_storage(ArrayRef<T> data) {
   return push_storage(reinterpret_cast<const uint8_t*>(data.data()), data.size() * sizeof(T));

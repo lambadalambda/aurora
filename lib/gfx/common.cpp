@@ -1125,6 +1125,7 @@ void end_frame(EndFrameCallback callback) {
   for (auto& array : gx::g_gxState.arrays) {
     array.cachedRange = {};
   }
+  gx::g_gxState.mtxDirtyMask = (1u << (gx::MaxPnMtx + gx::MaxTexMtx + gx::MaxPnMtx)) - 1;
   end_pipeline_frame();
   ++g_frameIndex;
   g_recordingFrame = nullptr;
@@ -1495,6 +1496,10 @@ Range push_uniform(const uint8_t* data, size_t length) {
 Range push_storage(const uint8_t* data, size_t length) {
   ZoneScoped;
   return push(current_frame_packet().storage, data, length, g_cachedLimits.minStorageBufferOffsetAlignment);
+}
+Range push_storage_unaligned(const uint8_t* data, size_t length, size_t alignment) {
+  ZoneScoped;
+  return push(current_frame_packet().storage, data, length, alignment);
 }
 Range push_texture_data(const uint8_t* data, size_t length, u32 bytesPerRow, u32 rowsPerImage) {
   // For CopyBufferToTexture, we need an alignment of 256 per row (see Dawn kTextureBytesPerRowAlignment)

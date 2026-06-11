@@ -1,5 +1,6 @@
 #include "shader_info.hpp"
 
+#include <bit>
 #include <cmath>
 
 #include <tracy/Tracy.hpp>
@@ -198,8 +199,11 @@ ShaderInfo build_shader_info(const ShaderConfig& config) noexcept {
     }
   }
 
-  // 10 position matrices, 10 texture matrices, 10 normal matrices.
-  info.uniformSize += sizeof(Mat3x4<float>) * 30;
+  // Matrix palette offsets: 10 position + 10 texture + 10 normal matrix
+  // storage offsets (u32 each), padded to 16 bytes. The matrices themselves
+  // live in the storage buffer and are uploaded only when an XF load
+  // changes them (GXState::mtxStorage).
+  info.uniformSize += 32 * sizeof(u32);
   info.uniformSize += 16; // active PN matrix index + padding
 
   for (int i = 0; i < config.tevStageCount; ++i) {
@@ -400,17 +404,36 @@ gfx::Range build_uniform(const ShaderInfo& info, u32 vtxStart, const BindGroupRa
   }
   buf.append(g_gxState.proj);
 
-  for (int i = 0; i < MaxPnMtx; i++) {
-    buf.append(g_gxState.pnMtx[i].pos);
-  }
-
-  for (int i = 0; i < MaxTexMtx; i++) {
-    buf.append(g_gxState.texMtxs[i]);
-  }
-
-  for (int i = 0; i < MaxPnMtx; i++) {
-    buf.append(g_gxState.pnMtx[i].nrm);
-  }
+  // Matrix palette: upload palette entries changed since the last draw (or
+  // not yet in this frame's storage buffer) as one contiguous push, updating
+  // the cached slot offsets, then append the offsets. The shader fetches
+  // matrices from the storage buffer via these offsets (see fetch_mtx34 in
+  // shader.cpp).
+  if (g_gxState.mtxDirtyMask != 0)
+    UNLIKELY {
+      constexpr u32 mtxSize = sizeof(Mat3x4<float>);
+      static_assert(mtxSize == 48);
+      static ByteBuffer mtxBuf;
+      mtxBuf.clear();
+      for (u32 mask = g_gxState.mtxDirtyMask; mask != 0; mask &= mask - 1) {
+        const u32 i = static_cast<u32>(std::countr_zero(mask));
+        if (i < MaxPnMtx) {
+          mtxBuf.append(g_gxState.pnMtx[i].pos);
+        } else if (i < MaxPnMtx + MaxTexMtx) {
+          mtxBuf.append(g_gxState.texMtxs[i - MaxPnMtx]);
+        } else {
+          mtxBuf.append(g_gxState.pnMtx[i - MaxPnMtx - MaxTexMtx].nrm);
+        }
+      }
+      const auto range = gfx::push_storage_unaligned(mtxBuf.data(), mtxBuf.size(), 4);
+      u32 k = 0;
+      for (u32 mask = g_gxState.mtxDirtyMask; mask != 0; mask &= mask - 1, ++k) {
+        const u32 i = static_cast<u32>(std::countr_zero(mask));
+        g_gxState.mtxOffsets[i] = range.offset + k * mtxSize;
+      }
+      g_gxState.mtxDirtyMask = 0;
+    }
+  buf.append(g_gxState.mtxOffsets);
 
   for (int i = 0; i < info.loadsTevReg.size(); ++i) {
     if (info.loadsTevReg.test(i)) {

@@ -290,6 +290,14 @@ struct GXState {
     operator bool() const noexcept { return handle.operator bool(); }
   };
   std::array<PnMtx, MaxPnMtx> pnMtx;
+  // Matrix palette upload state. mtxOffsets holds each palette slot's byte
+  // offset in this frame's storage buffer, in shader mtx_start index order:
+  // [0,10) pos, [10,20) tex, [20,30) normal (entries 30/31 pad the uniform
+  // to 16 bytes). A set bit in mtxDirtyMask means the slot was changed by an
+  // XF load (or the frame just started) and must be re-uploaded before the
+  // next draw; build_uniform handles that lazily.
+  std::array<u32, MaxPnMtx + MaxTexMtx + MaxPnMtx + 2> mtxOffsets;
+  u32 mtxDirtyMask = (1u << (MaxPnMtx + MaxTexMtx + MaxPnMtx)) - 1;
   u32 currentPnMtx;
   Mat4x4<float> proj;
   GXProjectionType projType; // for GXGetProjectionv
