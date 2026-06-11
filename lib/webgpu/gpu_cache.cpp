@@ -201,6 +201,12 @@ static bool fill_used_key_table(const std::vector<XXH128_hash_t>& usedKeys) {
 }
 
 static bool cache_init() {
+  // Debug: pretend no cache exists so every shader blob recompiles. Covers
+  // the Dawn-level blob cache; the aurora-level pipeline config cache is
+  // gated separately in gfx/pipeline_cache.cpp.
+  if (g_config.disableShaderCache) {
+    return false;
+  }
   if (cache_broken) {
     return false;
   }
