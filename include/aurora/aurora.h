@@ -153,7 +153,7 @@ void aurora_set_per_pixel_lighting(bool enabled);
 // Applies screen-space ambient occlusion to the scene rendered so far this
 // frame; call between 3D scene and 2D/UI drawing. radius is in view-space
 // units, intensity 0..1.
-void aurora_queue_ssao(float radius, float intensity);
+void aurora_queue_ssao(float radius, float intensity, float aoFloor);
 
 AuroraBackend aurora_get_backend();
 const AuroraBackend* aurora_get_available_backends(size_t* count);

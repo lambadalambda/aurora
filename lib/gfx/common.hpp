@@ -275,7 +275,7 @@ struct ConvRequest;
 void queue_palette_conv(tex_palette_conv::ConvRequest req);
 // Applies screen-space ambient occlusion to the current pass's output and
 // continues drawing in a new pass; called by the game between 3D and 2D.
-void queue_ssao(float radius, float intensity);
+void queue_ssao(float radius, float intensity, float aoFloor);
 
 Range push_verts(const uint8_t* data, size_t length, size_t alignment);
 template <typename T>

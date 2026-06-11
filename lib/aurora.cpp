@@ -426,15 +426,16 @@ void aurora_set_force_anisotropy(uint16_t level) {
   aurora::gx::g_gxState.pipelineDirty = true;
 #endif
 }
-void aurora_queue_ssao(float radius, float intensity) {
+void aurora_queue_ssao(float radius, float intensity, float aoFloor) {
 #ifdef AURORA_ENABLE_GX
   // Decode pending GX commands so the recorded passes and projection state
   // are current before the effect is queued (mirrors GXCopyTex).
   aurora::gx::fifo::drain();
-  aurora::gfx::queue_ssao(radius, intensity);
+  aurora::gfx::queue_ssao(radius, intensity, aoFloor);
 #else
   (void)radius;
   (void)intensity;
+  (void)aoFloor;
 #endif
 }
 void aurora_set_per_pixel_lighting(bool enabled) {

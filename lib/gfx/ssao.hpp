@@ -17,13 +17,15 @@ struct Params {
   float height;
   float radius;    // world-space sample radius
   float intensity; // 0..1 occlusion strength
+  float aoFloor;   // minimum AO value (prevents crushing baked shading)
+  float pad0, pad1, pad2;
 };
 
 void initialize();
 void shutdown();
 
 // Builds parameters from the current GX projection and framebuffer size.
-Params make_params(float radius, float intensity);
+Params make_params(float radius, float intensity, float aoFloor);
 
 // Encodes AO generation + composite for a pass recorded with SSAO enabled.
 struct RenderPassInfo; // see common.cpp RenderPass

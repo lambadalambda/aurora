@@ -625,7 +625,7 @@ void resolve_pass(TextureHandle texture, ClipRect rect, bool clearColor, bool cl
   push_command(CommandType::SetScissor, Command::Data{.setScissor = g_cachedScissor});
 }
 
-void queue_ssao(float radius, float intensity) {
+void queue_ssao(float radius, float intensity, float aoFloor) {
   if (g_currentRenderPass == UINT32_MAX) {
     return;
   }
@@ -633,7 +633,7 @@ void queue_ssao(float radius, float intensity) {
   // encoded after its draws (see render()), then drawing continues in a
   // load-preserving continuation pass.
   auto& prevPass = current_render_passes()[g_currentRenderPass];
-  const auto params = ssao::make_params(radius, intensity);
+  const auto params = ssao::make_params(radius, intensity, aoFloor);
   prevPass.ssaoUniformRange = push_uniform(params);
   enqueue_pass(current_frame_packet(), g_recordingFrameSlot, g_currentRenderPass);
 

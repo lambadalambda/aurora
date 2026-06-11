@@ -27,6 +27,10 @@ struct Params {
     size: vec2f,
     radius: f32,
     intensity: f32,
+    ao_floor: f32,
+    pad0: f32,
+    pad1: f32,
+    pad2: f32,
 };
 @group(0) @binding(1) var<uniform> params: Params;
 
@@ -103,7 +107,7 @@ const kTaps = array<vec2f, 8>(
         occ += max(occ_cos, 0.0) * range_w;
     }
     // Floor keeps occlusion from crushing the scene's baked shading.
-    let ao = clamp(1.0 - params.intensity * (occ / 8.0) * 2.2, 0.35, 1.0);
+    let ao = clamp(1.0 - params.intensity * (occ / 8.0) * 2.2, params.ao_floor, 1.0);
     return vec4f(ao, ao, ao, 1.0);
 }
 )";
@@ -116,6 +120,10 @@ struct Params {
     size: vec2f,
     radius: f32,
     intensity: f32,
+    ao_floor: f32,
+    pad0: f32,
+    pad1: f32,
+    pad2: f32,
 };
 @group(0) @binding(1) var<uniform> params: Params;
 @group(0) @binding(2) var ao_tex: texture_2d<f32>;
@@ -444,13 +452,14 @@ static void invert4x4(const float m[16], float out[16]) {
   }
 }
 
-Params make_params(float radius, float intensity) {
+Params make_params(float radius, float intensity, float aoFloor) {
   Params params{};
   invert4x4(reinterpret_cast<const float*>(&gx::g_gxState.proj), params.invProj);
   params.width = static_cast<float>(webgpu::g_frameBuffer.size.width);
   params.height = static_cast<float>(webgpu::g_frameBuffer.size.height);
   params.radius = radius;
   params.intensity = intensity;
+  params.aoFloor = aoFloor;
   return params;
 }
 
