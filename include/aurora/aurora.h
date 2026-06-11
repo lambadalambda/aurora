@@ -93,6 +93,9 @@ typedef struct {
   // Evaluate GX channel lighting per fragment instead of per vertex,
   // smoothing dynamic light falloff on low-poly geometry.
   bool perPixelLighting;
+  // Debug: disable the persistent pipeline/shader cache entirely (nothing is
+  // loaded or written); every pipeline compiles fresh each run.
+  bool disableShaderCache;
   bool vsync;
   bool startFullscreen;
   bool allowJoystickBackgroundEvents;

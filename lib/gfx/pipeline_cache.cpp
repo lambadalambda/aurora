@@ -620,6 +620,11 @@ static void seed_pipeline_cache() {
 }
 
 static bool prepare_pipeline_cache_db() {
+  // Debug: pretend no cache database exists — nothing is loaded or written,
+  // so every pipeline compiles fresh each run.
+  if (g_config.disableShaderCache) {
+    return false;
+  }
   if (g_pipelineCacheBroken) {
     return false;
   }
