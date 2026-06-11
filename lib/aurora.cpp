@@ -230,6 +230,7 @@ void end_frame() noexcept {
   ZoneScoped;
 #ifdef AURORA_ENABLE_GX
   gx::fifo::drain();
+  gx::fifo::trace_end_frame();
   gfx::finish();
   auto imguiDrawData = imgui::freeze();
 

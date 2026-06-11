@@ -90,4 +90,18 @@ const uint8_t* get_buffer_data();
 uint32_t get_buffer_size();
 void clear_buffer();
 
+// GX command stream trace capture, enabled via environment variables:
+//   AURORA_GX_TRACE=<path>     output file (capture inactive when unset)
+//   AURORA_GX_TRACE_SKIP=<n>   frames to skip before recording (default 0)
+//   AURORA_GX_TRACE_FRAMES=<n> frames to record (default 120)
+// File format: "AURGXTR1" magic, then records of
+//   [u8 type=0][u8 bigEndian][u32 size][bytes]  - one process() chunk
+//   [u8 type=1]                                 - end of frame
+namespace detail {
+extern bool sTraceChunksActive;
+} // namespace detail
+inline bool trace_active() { return detail::sTraceChunksActive; }
+void trace_chunk(const uint8_t* data, uint32_t size, bool bigEndian);
+void trace_end_frame();
+
 } // namespace aurora::gx::fifo
