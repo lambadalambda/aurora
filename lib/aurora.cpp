@@ -426,3 +426,11 @@ void aurora_set_force_anisotropy(uint16_t level) {
   aurora::gx::g_gxState.pipelineDirty = true;
 #endif
 }
+void aurora_set_per_pixel_lighting(bool enabled) {
+  aurora::g_config.perPixelLighting = enabled;
+#ifdef AURORA_ENABLE_GX
+  aurora::webgpu::g_graphicsConfig.perPixelLighting = enabled;
+  // Shader configs changed; affected pipelines rebuild from the new key.
+  aurora::gx::g_gxState.pipelineDirty = true;
+#endif
+}

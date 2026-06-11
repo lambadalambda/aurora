@@ -833,6 +833,10 @@ void populate_pipeline_config(PipelineConfig& config, GXPrimitive primitive, GXV
   } else {
     config.shaderConfig.lineMode = 0;
   }
+  // Line/point shaders use the dual-vertex position path, which has no
+  // single mv_pos for the per-pixel varyings; keep vertex lighting there.
+  config.shaderConfig.perPixelLighting =
+      config.shaderConfig.lineMode == 0 && webgpu::g_graphicsConfig.perPixelLighting ? 1 : 0;
   config.shaderConfig.tevSwapTable = g_gxState.tevSwapTable;
   for (u8 i = 0; i < g_gxState.numTevStages; ++i) {
     config.shaderConfig.tevStages[i] = g_gxState.tevStages[i];

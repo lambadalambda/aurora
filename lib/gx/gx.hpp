@@ -47,7 +47,6 @@ constexpr float GX_LARGE_NUMBER = -1048576.0f;
 namespace aurora::gx {
 constexpr bool EnableNormalVisualization = false;
 constexpr bool EnableDebugPrints = false;
-constexpr bool UsePerPixelLighting = false;
 constexpr bool UseReversedZ = true;
 
 constexpr u32 MaxTextures = GX_MAX_TEXMAP;
@@ -461,7 +460,9 @@ struct ShaderConfig {
   u8 vtxStride = 0;
   u8 lineMode : 2 = 0; // 1 = GX_LINES, 2 = GX_LINESTRIP, 3 = GX_POINTS
   u8 pad1 : 6 = 0;
-  u8 pad2 = 0;
+  // Evaluate channel lighting per fragment instead of per vertex
+  // (GraphicsConfig::perPixelLighting at draw time; part of the key).
+  u8 perPixelLighting = 0;
   std::array<AttrConfig, MaxVtxAttr> attrs;
   std::array<TevSwap, MaxTevSwap> tevSwapTable;
   std::array<TevStage, MaxTevStages> tevStages;

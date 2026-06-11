@@ -950,6 +950,7 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
       .msaaSamples = g_config.msaa,
       .textureAnisotropy = g_config.maxTextureAnisotropy,
       .forceTextureAnisotropy = g_config.forceTextureAnisotropy,
+      .perPixelLighting = g_config.perPixelLighting,
   };
   create_copy_pipeline();
   create_resample_pipeline();

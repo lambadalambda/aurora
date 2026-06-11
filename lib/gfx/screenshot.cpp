@@ -57,6 +57,7 @@ void check_trigger() {
   std::filesystem::remove(trigger, ec);
   std::lock_guard lock{g_mutex};
   g_armed = true;
+  Log.info("screenshot: armed");
 }
 
 void encode_frame(const wgpu::CommandEncoder& encoder, const webgpu::TextureWithSampler& src) {
@@ -65,9 +66,12 @@ void encode_frame(const wgpu::CommandEncoder& encoder, const webgpu::TextureWith
     return;
   }
   if (g_pending.copySubmitted || g_pending.mapInFlight) {
+    Log.info("screenshot: capture already in flight (copySubmitted={} mapInFlight={})", g_pending.copySubmitted,
+             g_pending.mapInFlight);
     return; // previous capture still in flight; stay armed and retry next frame
   }
   if (!src.texture || src.size.width == 0 || src.size.height == 0) {
+    Log.info("screenshot: present source unavailable ({}x{})", src.size.width, src.size.height);
     return;
   }
 

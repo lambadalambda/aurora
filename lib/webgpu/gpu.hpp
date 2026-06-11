@@ -19,6 +19,8 @@ struct GraphicsConfig {
   // When non-zero, overrides GX_ANISO_1 on mip-mapped textures so content
   // authored without anisotropy (nearly all of it) still gets filtered.
   uint16_t forceTextureAnisotropy;
+  // Evaluate GX channel lighting per fragment instead of per vertex.
+  bool perPixelLighting;
 };
 struct TextureWithSampler {
   wgpu::Texture texture;

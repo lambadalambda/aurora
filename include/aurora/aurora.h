@@ -90,6 +90,9 @@ typedef struct {
   // When non-zero, mip-mapped textures that request GX_ANISO_1 are sampled
   // with this anisotropy level instead (see aurora_set_force_anisotropy).
   uint16_t forceTextureAnisotropy;
+  // Evaluate GX channel lighting per fragment instead of per vertex,
+  // smoothing dynamic light falloff on low-poly geometry.
+  bool perPixelLighting;
   bool vsync;
   bool startFullscreen;
   bool allowJoystickBackgroundEvents;
@@ -141,6 +144,9 @@ void aurora_set_background_input(bool value);
 void aurora_set_resampler(AuroraSampler sampler);
 // Runtime override for AuroraConfig::forceTextureAnisotropy (0 disables).
 void aurora_set_force_anisotropy(uint16_t level);
+// Runtime override for AuroraConfig::perPixelLighting. Affected pipelines
+// recompile asynchronously; geometry may pop in briefly after switching.
+void aurora_set_per_pixel_lighting(bool enabled);
 
 AuroraBackend aurora_get_backend();
 const AuroraBackend* aurora_get_available_backends(size_t* count);
