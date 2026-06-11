@@ -87,6 +87,9 @@ typedef struct {
   AuroraBackend desiredBackend;
   uint32_t msaa;
   uint16_t maxTextureAnisotropy;
+  // When non-zero, mip-mapped textures that request GX_ANISO_1 are sampled
+  // with this anisotropy level instead (see aurora_set_force_anisotropy).
+  uint16_t forceTextureAnisotropy;
   bool vsync;
   bool startFullscreen;
   bool allowJoystickBackgroundEvents;
@@ -136,6 +139,8 @@ void aurora_set_log_level(AuroraLogLevel level);
 void aurora_set_pause_on_focus_lost(bool value);
 void aurora_set_background_input(bool value);
 void aurora_set_resampler(AuroraSampler sampler);
+// Runtime override for AuroraConfig::forceTextureAnisotropy (0 disables).
+void aurora_set_force_anisotropy(uint16_t level);
 
 AuroraBackend aurora_get_backend();
 const AuroraBackend* aurora_get_available_backends(size_t* count);

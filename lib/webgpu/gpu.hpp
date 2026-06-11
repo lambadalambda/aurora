@@ -16,6 +16,9 @@ struct GraphicsConfig {
   wgpu::TextureFormat depthFormat;
   uint32_t msaaSamples;
   uint16_t textureAnisotropy;
+  // When non-zero, overrides GX_ANISO_1 on mip-mapped textures so content
+  // authored without anisotropy (nearly all of it) still gets filtered.
+  uint16_t forceTextureAnisotropy;
 };
 struct TextureWithSampler {
   wgpu::Texture texture;

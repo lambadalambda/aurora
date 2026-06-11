@@ -4,6 +4,7 @@
 #include "gfx/common.hpp"
 #include "gfx/screenshot.hpp"
 #include "gx/fifo.hpp"
+#include "gx/gx.hpp"
 #include "imgui.hpp"
 #include "webgpu/gpu.hpp"
 #include <webgpu/webgpu_cpp.h>
@@ -415,5 +416,13 @@ void aurora_set_resampler(AuroraSampler sampler) {
   aurora::webgpu::set_resampler(sampler);
 #else
   (void)sampler;
+#endif
+}
+void aurora_set_force_anisotropy(uint16_t level) {
+  aurora::g_config.forceTextureAnisotropy = level;
+#ifdef AURORA_ENABLE_GX
+  aurora::webgpu::g_graphicsConfig.forceTextureAnisotropy = level;
+  // Sampler descriptors changed; force bind groups to be rebuilt.
+  aurora::gx::g_gxState.pipelineDirty = true;
 #endif
 }

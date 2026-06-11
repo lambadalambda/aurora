@@ -949,6 +949,7 @@ bool initialize(AuroraBackend auroraBackend, bool allowCpu) {
       .depthFormat = wgpu::TextureFormat::Depth32Float,
       .msaaSamples = g_config.msaa,
       .textureAnisotropy = g_config.maxTextureAnisotropy,
+      .forceTextureAnisotropy = g_config.forceTextureAnisotropy,
   };
   create_copy_pipeline();
   create_resample_pipeline();

@@ -1046,7 +1046,8 @@ static u16 wgpu_aniso(GXAnisotropy aniso) {
     DEFAULT_FATAL("invalid aniso {}", static_cast<int>(aniso));
   case GX_ANISO_1:
   case GX_MAX_ANISOTROPY:
-    return 1;
+    // Game content almost never requests anisotropy; allow forcing it on.
+    return std::max<u16>(aurora::webgpu::g_graphicsConfig.forceTextureAnisotropy, 1);
   case GX_ANISO_2:
     return std::max<u16>(aurora::webgpu::g_graphicsConfig.textureAnisotropy / 2, 1);
   case GX_ANISO_4:
