@@ -34,6 +34,9 @@ bool create_window(AuroraBackend backend);
 bool create_renderer();
 void destroy_window();
 void show_window();
+// True when AURORA_HEADLESS is set: the window is never shown, pause checks
+// are bypassed, and frames render offscreen without presenting.
+bool is_headless() noexcept;
 AuroraWindowSize get_window_size();
 const AuroraEvent* poll_events();
 SDL_Window* get_sdl_window();

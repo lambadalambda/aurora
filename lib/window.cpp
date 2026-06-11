@@ -357,6 +357,14 @@ void show_window() {
   }
 }
 
+bool is_headless() noexcept {
+  static const bool headless = [] {
+    const char* env = SDL_getenv("AURORA_HEADLESS");
+    return env != nullptr && env[0] != '\0' && env[0] != '0';
+  }();
+  return headless;
+}
+
 bool initialize() {
   /* We don't want to initialize anything input related here, otherwise the add events will get lost to the void */
   TRY(SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight"), "Error setting {}: {}", SDL_HINT_ORIENTATIONS,
@@ -439,6 +447,11 @@ SDL_Window* get_sdl_window() { return g_window; }
 SDL_Renderer* get_sdl_renderer() { return g_renderer; }
 
 bool is_paused() noexcept {
+  // In headless mode the window stays hidden and unfocused by design; never
+  // pause for it.
+  if (is_headless()) {
+    return !is_presentable();
+  }
   if (!is_presentable()) {
     return true;
   }

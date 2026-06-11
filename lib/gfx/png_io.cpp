@@ -99,4 +99,58 @@ load_png_file(const std::filesystem::path& path) noexcept {
     .data = std::move(imageData)
   };
 }
+
+bool write_png_file(const std::filesystem::path& path, const uint8_t* data, uint32_t width, uint32_t height,
+                    uint32_t bytesPerRow, bool bgra) noexcept {
+  std::ofstream file(path, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+  if (!file) {
+    Log.error("failed to open file for writing: {}", fs_path_to_string(path));
+    return false;
+  }
+
+  png_structp pngWrite = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  if (pngWrite == nullptr) {
+    return false;
+  }
+  png_infop pngInfo = png_create_info_struct(pngWrite);
+  if (pngInfo == nullptr) {
+    png_destroy_write_struct(&pngWrite, nullptr);
+    return false;
+  }
+  if (setjmp(png_jmpbuf(pngWrite))) {
+    png_destroy_write_struct(&pngWrite, &pngInfo);
+    Log.error("libpng error while writing {}", fs_path_to_string(path));
+    return false;
+  }
+
+  png_set_write_fn(
+      pngWrite, &file,
+      [](png_structp png, png_bytep out, const size_t length) {
+        auto* stream = static_cast<std::ofstream*>(png_get_io_ptr(png));
+        stream->write(reinterpret_cast<const char*>(out), static_cast<std::streamsize>(length));
+        if (stream->fail()) {
+          png_error(png, "file write failed!");
+        }
+      },
+      [](png_structp png) {
+        auto* stream = static_cast<std::ofstream*>(png_get_io_ptr(png));
+        stream->flush();
+      });
+
+  png_set_IHDR(pngWrite, pngInfo, width, height, 8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE,
+               PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+  png_write_info(pngWrite, pngInfo);
+  if (bgra) {
+    png_set_bgr(pngWrite);
+  }
+
+  std::vector<png_bytep> rowPointers(height);
+  for (uint32_t i = 0; i < height; ++i) {
+    rowPointers[i] = const_cast<png_bytep>(data + static_cast<size_t>(i) * bytesPerRow);
+  }
+  png_write_image(pngWrite, rowPointers.data());
+  png_write_end(pngWrite, nullptr);
+  png_destroy_write_struct(&pngWrite, &pngInfo);
+  return true;
+}
 }

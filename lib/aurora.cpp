@@ -2,6 +2,7 @@
 
 #ifdef AURORA_ENABLE_GX
 #include "gfx/common.hpp"
+#include "gfx/screenshot.hpp"
 #include "gx/fifo.hpp"
 #include "imgui.hpp"
 #include "webgpu/gpu.hpp"
@@ -145,7 +146,11 @@ AuroraInfo initialize(int argc, char* argv[], const AuroraConfig& config) noexce
   ASSERT(window::create_renderer(), "Failed to initialize SDL renderer: {}", SDL_GetError());
 #endif
 
-  window::show_window();
+  if (window::is_headless()) {
+    Log.info("AURORA_HEADLESS set; window stays hidden, frames will not be presented");
+  } else {
+    window::show_window();
+  }
 
 #ifdef AURORA_ENABLE_GX
   gfx::initialize();
@@ -246,13 +251,15 @@ void end_frame() noexcept {
   }
 #endif
 
+  gfx::screenshot::check_trigger();
+
   gfx::end_frame([rmlBindGroup = std::move(rmlBindGroup), viewport,
                   imguiDrawData = std::move(imguiDrawData)](wgpu::CommandEncoder& encoder) {
     window::SurfaceLock surfaceLock;
     wgpu::Texture currentTexture;
     wgpu::TextureView currentView;
     auto surfaceStatus = wgpu::SurfaceGetCurrentTextureStatus::Error;
-    if (window::is_presentable() && g_surface) {
+    if (!window::is_headless() && window::is_presentable() && g_surface) {
       ZoneScopedN("Acquire texture");
       wgpu::SurfaceTexture surfaceTexture;
       g_surface.GetCurrentTexture(&surfaceTexture);
@@ -313,9 +320,10 @@ void end_frame() noexcept {
         imgui::render(pass, imguiDrawData);
         pass.End();
       }
-    } else {
+    } else if (!window::is_headless()) {
       Log.info("Skipping present; window not presentable");
     }
+    gfx::screenshot::encode_frame(encoder, webgpu::present_source());
     const wgpu::CommandBufferDescriptor cmdBufDescriptor{.label = "Redraw command buffer"};
     const auto buffer = encoder.Finish(&cmdBufDescriptor);
     {
@@ -329,7 +337,7 @@ void end_frame() noexcept {
         Log.warn("Surface present failed: {}", static_cast<int>(presentStatus));
         webgpu::release_surface();
       }
-    } else if (g_surface) {
+    } else if (g_surface && !window::is_headless()) {
       switch (surfaceStatus) {
       case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
         Log.warn("Surface texture acquisition timed out");
@@ -357,6 +365,7 @@ void end_frame() noexcept {
       }
     }
     gfx::after_submit();
+    gfx::screenshot::after_submit();
 
     TracyPlotConfig("aurora: lastVertSize", tracy::PlotFormatType::Memory, false, true, 0);
     TracyPlotConfig("aurora: lastUniformSize", tracy::PlotFormatType::Memory, false, true, 0);
