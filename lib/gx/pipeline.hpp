@@ -14,6 +14,10 @@ struct DrawData {
   uint32_t instanceCount;
   GXBindGroups bindGroups;
   uint32_t dstAlpha;
+  // Ubershader fallback used while `pipeline` is still compiling; 0 when the
+  // configuration is outside the interpreter's envelope or not needed.
+  gfx::PipelineRef uberPipeline;
+  gfx::Range uberUniformRange;
 };
 
 constexpr uint32_t GXPipelineConfigVersion = 15;

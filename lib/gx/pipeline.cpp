@@ -15,11 +15,17 @@ wgpu::RenderPipeline create_pipeline(const PipelineConfig& config) {
 }
 
 void render(const DrawData& data, const wgpu::RenderPassEncoder& pass) {
+  auto uniformRange = data.uniformRange;
   if (!gfx::bind_pipeline(data.pipeline, pass)) {
-    return;
+    // Fall back to the interpreting ubershader while the specialized
+    // pipeline compiles.
+    if (data.uberPipeline == 0 || !gfx::bind_pipeline(data.uberPipeline, pass)) {
+      return;
+    }
+    uniformRange = data.uberUniformRange;
   }
 
-  const std::array offsets{data.uniformRange.offset};
+  const std::array offsets{uniformRange.offset};
   pass.SetBindGroup(1, gfx::g_uniformBindGroup, offsets.size(), offsets.data());
   if (data.bindGroups.textureBindGroup) {
     pass.SetBindGroup(2, gfx::find_bind_group(data.bindGroups.textureBindGroup));

@@ -2,8 +2,10 @@
 
 #include "fifo.hpp"
 #include "../gfx/common.hpp"
+#include "../gfx/pipeline_cache.hpp"
 #include "dolphin/gx/GXAurora.h"
 #include "gx.hpp"
+#include "ubershader.hpp"
 #include "gx_fmt.hpp"
 #include "pipeline.hpp"
 #include "shader_info.hpp"
@@ -1666,6 +1668,10 @@ static void handle_draw_unmerged(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, g
     ShaderInfo info;
     GXBindGroups bindGroups;
     gfx::PipelineRef pipeline;
+    // Ubershader fallback, armed only while the specialized pipeline is
+    // still compiling and the config is within the interpreter's envelope.
+    gfx::PipelineRef uberPipeline;
+    ShaderConfig uberConfig;
   } s_lastDrawState;
   auto& cached = s_lastDrawState;
   if (g_gxState.pipelineDirty || !cached.valid || cached.prim != prim || cached.fmt != fmt) {
@@ -1675,6 +1681,12 @@ static void handle_draw_unmerged(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, g
     resolve_sampled_textures(cached.info);
     cached.bindGroups = build_bind_groups(cached.info);
     cached.pipeline = gfx::pipeline_ref(config);
+    cached.uberPipeline = 0;
+    if (!gfx::pipeline_ready(cached.pipeline) && uber::supports(config.shaderConfig)) {
+      cached.uberConfig = config.shaderConfig;
+      config.shaderConfig = {};
+      cached.uberPipeline = uber::pipeline_ref(config);
+    }
     cached.prim = prim;
     cached.fmt = fmt;
     cached.valid = true;
@@ -1683,6 +1695,17 @@ static void handle_draw_unmerged(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, g
   const auto& info = cached.info;
   const auto& bindGroups = cached.bindGroups;
   const auto pipeline = cached.pipeline;
+
+  gfx::PipelineRef uberPipeline = 0;
+  gfx::Range uberUniformRange{};
+  if (cached.uberPipeline != 0) {
+    if (gfx::pipeline_ready(pipeline)) {
+      cached.uberPipeline = 0; // specialized pipeline arrived; stop falling back
+    } else {
+      uberPipeline = cached.uberPipeline;
+      uberUniformRange = uber::build_uniform(cached.uberConfig, vertRange.offset, ranges);
+    }
+  }
 
   uint32_t instanceCount = 1;
   if (prim == GX_LINES) {
@@ -1702,6 +1725,8 @@ static void handle_draw_unmerged(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, g
       .instanceCount = instanceCount,
       .bindGroups = bindGroups,
       .dstAlpha = g_gxState.dstAlpha,
+      .uberPipeline = uberPipeline,
+      .uberUniformRange = uberUniformRange,
   });
 }
 

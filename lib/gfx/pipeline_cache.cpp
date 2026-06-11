@@ -3,6 +3,7 @@
 #include "clear.hpp"
 #include "../fs_helper.hpp"
 #include "../gx/pipeline.hpp"
+#include "../gx/ubershader.hpp"
 #ifdef AURORA_ENABLE_RMLUI
 #include "../rmlui/pipeline.hpp"
 #endif
@@ -758,6 +759,15 @@ static void prune_old_pipeline_cache_versions() {
     return;
   }
 
+  const auto uberDelete = fmt::format("DELETE FROM pipeline_cache WHERE type = {} AND config_version < {}",
+                                      underlying(ShaderType::GXUber), gx::uber::UberPipelineConfigVersion);
+  ret = sqlite::exec(g_pipelineCacheDb, uberDelete.c_str());
+  if (ret != SQLITE_OK) {
+    Log.error("Failed to prune GX uber pipeline cache rows: {}", sqlite3_errmsg(g_pipelineCacheDb));
+    pipeline_cache_abort();
+    return;
+  }
+
 #ifdef AURORA_ENABLE_RMLUI
   const auto rmlDelete = fmt::format("DELETE FROM pipeline_cache WHERE type = {} AND config_version < {}",
                                      underlying(ShaderType::Rml), rmlui::RmlPipelineConfigVersion);
@@ -974,6 +984,11 @@ static size_t load_pipeline_cache() {
   }
   acceptedRows +=
       load_pipeline_cache_entries<gx::PipelineConfig>(ShaderType::GX, gx::GXPipelineConfigVersion, gx::create_pipeline);
+  if (g_pipelineCacheBroken) {
+    return acceptedRows;
+  }
+  acceptedRows += load_pipeline_cache_entries<gx::PipelineConfig>(
+      ShaderType::GXUber, gx::uber::UberPipelineConfigVersion, gx::uber::create_pipeline);
 #ifdef AURORA_ENABLE_RMLUI
   if (g_pipelineCacheBroken) {
     return acceptedRows;
@@ -1016,6 +1031,11 @@ PipelineRef find_pipeline(ShaderType type, const clear::PipelineConfig& config, 
 template <>
 PipelineRef find_pipeline(ShaderType type, const gx::PipelineConfig& config, NewPipelineCallback&& cb) {
   return find_pipeline_impl(type, config, std::move(cb), true, std::nullopt);
+}
+
+bool pipeline_ready(PipelineRef ref) {
+  std::scoped_lock guard{g_pipelineMutex};
+  return g_pipelines.contains(ref);
 }
 
 #ifdef AURORA_ENABLE_RMLUI

@@ -13,6 +13,7 @@ namespace {
 Module Log("aurora::gx");
 
 bool is_alpha_bump_channel(GXChannelID id) { return id == GX_ALPHA_BUMP || id == GX_ALPHA_BUMPN; }
+} // namespace
 
 Vec4<float> texture_size_bias(const gfx::TextureBind& tex) {
   auto width = static_cast<float>(tex.texObj.width());
@@ -28,6 +29,7 @@ Vec4<float> texture_size_bias(const gfx::TextureBind& tex) {
   return {width, height, tex.texObj.lod_bias() + vpBias, 0.0f};
 }
 
+namespace {
 void color_arg_reg_info(GXTevColorArg arg, const TevStage& stage, ShaderInfo& info) {
   switch (arg) {
   case GX_CC_CPREV:
@@ -372,6 +374,36 @@ static u32 line_texcoord_mask() noexcept {
   return mask;
 }
 
+// Uploads matrix palette entries changed since the last draw (or not yet in
+// this frame's storage buffer) as one contiguous push, updating the cached
+// slot offsets in g_gxState.mtxOffsets. Shaders fetch palette entries from
+// the storage buffer via these offsets (fetch_mtx34).
+void flush_matrix_palette() noexcept {
+  if (g_gxState.mtxDirtyMask == 0)
+    LIKELY { return; }
+  constexpr u32 mtxSize = sizeof(Mat3x4<float>);
+  static_assert(mtxSize == 48);
+  static ByteBuffer mtxBuf;
+  mtxBuf.clear();
+  for (u32 mask = g_gxState.mtxDirtyMask; mask != 0; mask &= mask - 1) {
+    const u32 i = static_cast<u32>(std::countr_zero(mask));
+    if (i < MaxPnMtx) {
+      mtxBuf.append(g_gxState.pnMtx[i].pos);
+    } else if (i < MaxPnMtx + MaxTexMtx) {
+      mtxBuf.append(g_gxState.texMtxs[i - MaxPnMtx]);
+    } else {
+      mtxBuf.append(g_gxState.pnMtx[i - MaxPnMtx - MaxTexMtx].nrm);
+    }
+  }
+  const auto range = gfx::push_storage_unaligned(mtxBuf.data(), mtxBuf.size(), 4);
+  u32 k = 0;
+  for (u32 mask = g_gxState.mtxDirtyMask; mask != 0; mask &= mask - 1, ++k) {
+    const u32 i = static_cast<u32>(std::countr_zero(mask));
+    g_gxState.mtxOffsets[i] = range.offset + k * mtxSize;
+  }
+  g_gxState.mtxDirtyMask = 0;
+}
+
 gfx::Range build_uniform(const ShaderInfo& info, u32 vtxStart, const BindGroupRanges& ranges) noexcept {
   ZoneScoped;
 
@@ -404,35 +436,8 @@ gfx::Range build_uniform(const ShaderInfo& info, u32 vtxStart, const BindGroupRa
   }
   buf.append(g_gxState.proj);
 
-  // Matrix palette: upload palette entries changed since the last draw (or
-  // not yet in this frame's storage buffer) as one contiguous push, updating
-  // the cached slot offsets, then append the offsets. The shader fetches
-  // matrices from the storage buffer via these offsets (see fetch_mtx34 in
-  // shader.cpp).
-  if (g_gxState.mtxDirtyMask != 0)
-    UNLIKELY {
-      constexpr u32 mtxSize = sizeof(Mat3x4<float>);
-      static_assert(mtxSize == 48);
-      static ByteBuffer mtxBuf;
-      mtxBuf.clear();
-      for (u32 mask = g_gxState.mtxDirtyMask; mask != 0; mask &= mask - 1) {
-        const u32 i = static_cast<u32>(std::countr_zero(mask));
-        if (i < MaxPnMtx) {
-          mtxBuf.append(g_gxState.pnMtx[i].pos);
-        } else if (i < MaxPnMtx + MaxTexMtx) {
-          mtxBuf.append(g_gxState.texMtxs[i - MaxPnMtx]);
-        } else {
-          mtxBuf.append(g_gxState.pnMtx[i - MaxPnMtx - MaxTexMtx].nrm);
-        }
-      }
-      const auto range = gfx::push_storage_unaligned(mtxBuf.data(), mtxBuf.size(), 4);
-      u32 k = 0;
-      for (u32 mask = g_gxState.mtxDirtyMask; mask != 0; mask &= mask - 1, ++k) {
-        const u32 i = static_cast<u32>(std::countr_zero(mask));
-        g_gxState.mtxOffsets[i] = range.offset + k * mtxSize;
-      }
-      g_gxState.mtxDirtyMask = 0;
-    }
+  // Matrix palette: see flush_matrix_palette.
+  flush_matrix_palette();
   buf.append(g_gxState.mtxOffsets);
 
   for (int i = 0; i < info.loadsTevReg.size(); ++i) {

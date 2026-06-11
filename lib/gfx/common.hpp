@@ -222,6 +222,7 @@ enum class ShaderType : uint8_t {
   Clear = 0,
   GX = 1,
   Rml = 2,
+  GXUber = 3,
 };
 
 void initialize();
@@ -317,6 +318,8 @@ DrawData* get_last_draw_command();
 template <typename PipelineConfig>
 PipelineRef pipeline_ref(const PipelineConfig& config);
 bool bind_pipeline(PipelineRef ref, const wgpu::RenderPassEncoder& pass);
+// True if the pipeline for this ref has finished compiling.
+bool pipeline_ready(PipelineRef ref);
 
 BindGroupRef bind_group_ref(const WGPUBindGroupDescriptor& descriptor);
 wgpu::BindGroup find_bind_group(BindGroupRef id);
