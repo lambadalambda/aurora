@@ -137,9 +137,12 @@ bool write_png_file(const std::filesystem::path& path, const uint8_t* data, uint
         stream->flush();
       });
 
-  png_set_IHDR(pngWrite, pngInfo, width, height, 8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE,
+  // Write opaque RGB, dropping the input's alpha byte: EFB alpha is internal
+  // blending data (often ~0) and makes screenshots render transparent.
+  png_set_IHDR(pngWrite, pngInfo, width, height, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
                PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
   png_write_info(pngWrite, pngInfo);
+  png_set_filler(pngWrite, 0, PNG_FILLER_AFTER);
   if (bgra) {
     png_set_bgr(pngWrite);
   }

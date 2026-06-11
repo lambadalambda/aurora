@@ -5,7 +5,9 @@
 #include "../webgpu/gpu.hpp"
 
 #include <cstdlib>
+#include <algorithm>
 #include <filesystem>
+#include <vector>
 #include <mutex>
 
 static aurora::Module Log("aurora::gfx::screenshot");
@@ -46,6 +48,33 @@ std::filesystem::path output_dir() {
 } // namespace
 
 void check_trigger() {
+  // Frame-exact captures (AURORA_SCREENSHOT_FRAMES=n[,n...]), for
+  // deterministic A/B comparisons of rendering changes.
+  static const std::vector<uint64_t> captureFrames = [] {
+    std::vector<uint64_t> frames;
+    if (const char* env = getenv("AURORA_SCREENSHOT_FRAMES"); env != nullptr) {
+      const char* p = env;
+      while (*p != '\0') {
+        char* end = nullptr;
+        const auto value = std::strtoull(p, &end, 10);
+        if (end == p) {
+          break;
+        }
+        frames.push_back(value);
+        p = *end == ',' ? end + 1 : end;
+      }
+    }
+    return frames;
+  }();
+  static uint64_t frameIndex = 0;
+  ++frameIndex;
+  if (std::find(captureFrames.begin(), captureFrames.end(), frameIndex) != captureFrames.end()) {
+    std::lock_guard lock{g_mutex};
+    g_armed = true;
+    Log.info("screenshot: armed (frame {})", frameIndex);
+    return;
+  }
+
   const char* trigger = trigger_path();
   if (trigger == nullptr) {
     return;
