@@ -150,6 +150,10 @@ void aurora_set_force_anisotropy(uint16_t level);
 // Runtime override for AuroraConfig::perPixelLighting. Affected pipelines
 // recompile asynchronously; geometry may pop in briefly after switching.
 void aurora_set_per_pixel_lighting(bool enabled);
+// Applies screen-space ambient occlusion to the scene rendered so far this
+// frame; call between 3D scene and 2D/UI drawing. radius is in view-space
+// units, intensity 0..1.
+void aurora_queue_ssao(float radius, float intensity);
 
 AuroraBackend aurora_get_backend();
 const AuroraBackend* aurora_get_available_backends(size_t* count);

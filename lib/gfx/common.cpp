@@ -2,6 +2,7 @@
 
 #include "clear.hpp"
 #include "depth_peek.hpp"
+#include "ssao.hpp"
 #include "../internal.hpp"
 #include "../webgpu/gpu.hpp"
 #include "../gx/pipeline.hpp"
@@ -161,6 +162,7 @@ struct RenderPass {
   GXTexFmt resolveFormat = GX_TF_RGBA8;
   ClipRect resolveRect;
   Range resolveUniformRange;
+  Range ssaoUniformRange;
   Vec4<float> clearColorValue{0.f, 0.f, 0.f, 0.f};
   float clearDepthValue = gx::UseReversedZ ? 0.f : 1.f;
   wgpu::LoadOp colorLoadOp = wgpu::LoadOp::Undefined;
@@ -623,6 +625,39 @@ void resolve_pass(TextureHandle texture, ClipRect rect, bool clearColor, bool cl
   push_command(CommandType::SetScissor, Command::Data{.setScissor = g_cachedScissor});
 }
 
+void queue_ssao(float radius, float intensity) {
+  if (g_currentRenderPass == UINT32_MAX) {
+    return;
+  }
+  // Seal the current pass with SSAO requested; AO generation + composite are
+  // encoded after its draws (see render()), then drawing continues in a
+  // load-preserving continuation pass.
+  auto& prevPass = current_render_passes()[g_currentRenderPass];
+  const auto params = ssao::make_params(radius, intensity);
+  prevPass.ssaoUniformRange = push_uniform(params);
+  enqueue_pass(current_frame_packet(), g_recordingFrameSlot, g_currentRenderPass);
+
+  RenderPass newPass{
+      .colorView = prevPass.colorView,
+      .resolveView = prevPass.resolveView,
+      .depthStencilView = prevPass.depthStencilView,
+      .copySourceTexture = prevPass.copySourceTexture,
+      .copySourceView = prevPass.copySourceView,
+      .copySourceDepthView = prevPass.copySourceDepthView,
+      .targetSize = prevPass.targetSize,
+      .msaaSamples = prevPass.msaaSamples,
+      .clearColor = false,
+      .clearDepth = false,
+      .hasDepth = prevPass.hasDepth,
+      .hasStencil = prevPass.hasStencil,
+  };
+  newPass.commands.reserve(2048);
+  current_render_passes().emplace_back(std::move(newPass));
+  ++g_currentRenderPass;
+  push_command(CommandType::SetViewport, Command::Data{.setViewport = g_cachedViewport});
+  push_command(CommandType::SetScissor, Command::Data{.setScissor = g_cachedScissor});
+}
+
 void queue_palette_conv(tex_palette_conv::ConvRequest req) {
   auto& renderPass = current_render_passes()[g_currentRenderPass];
   ASSERT(!renderPass.sealed, "Attempted to append palette conversion to sealed render pass {}", g_currentRenderPass);
@@ -806,6 +841,7 @@ void initialize() {
   //   }
   // });
   depth_peek::initialize();
+  ssao::initialize();
   tex_copy_conv::initialize();
   tex_palette_conv::initialize();
   texture_replacement::initialize();
@@ -937,6 +973,7 @@ void shutdown() {
   render_worker::shutdown();
   shutdown_pipeline_cache();
   depth_peek::shutdown();
+  ssao::shutdown();
   tex_copy_conv::shutdown();
   tex_palette_conv::shutdown();
   texture_replacement::shutdown();
@@ -1258,7 +1295,8 @@ static void render(wgpu::CommandEncoder& cmd, FramePacket& frame, RenderPass& pa
   for (const auto& conv : passInfo.paletteConvs) {
     tex_palette_conv::run(cmd, conv);
   }
-  if (!passInfo.observable && !passInfo.resolveTarget && !passInfo.offscreen) {
+  if (!passInfo.observable && !passInfo.resolveTarget && !passInfo.offscreen &&
+      passInfo.ssaoUniformRange.size == 0) {
     // Skip intermediate EFB render passes without observable output.
     return;
   }
@@ -1354,6 +1392,11 @@ static void render(wgpu::CommandEncoder& cmd, FramePacket& frame, RenderPass& pa
       };
       cmd.CopyTextureToTexture(&src, &dst, &size);
     }
+  }
+
+  if (passInfo.ssaoUniformRange.size != 0) {
+    ssao::encode(cmd, passInfo.depthStencilView, passInfo.colorView, passInfo.msaaSamples, passInfo.targetSize,
+                 passInfo.ssaoUniformRange);
   }
 }
 
