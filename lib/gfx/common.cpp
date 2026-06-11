@@ -1319,8 +1319,9 @@ static void render(wgpu::CommandEncoder& cmd, FramePacket& frame, RenderPass& pa
     const bool needsScaling = dstSize.width != static_cast<uint32_t>(passInfo.resolveRect.width) ||
                               dstSize.height != static_cast<uint32_t>(passInfo.resolveRect.height);
     const bool isDepth = gx::is_depth_format(passInfo.resolveFormat);
-    if (isDepth && passInfo.msaaSamples > 1) {
-      Log.fatal("Depth tex copies from multisampled EFB targets are not supported");
+    const bool multisampledDepth = isDepth && passInfo.msaaSamples > 1;
+    if (multisampledDepth && !needsConversion) {
+      Log.fatal("Multisampled depth copies without format conversion are not supported");
     }
     const tex_copy_conv::ConvRequest convReq{
         .fmt = passInfo.resolveFormat,
@@ -1328,6 +1329,7 @@ static void render(wgpu::CommandEncoder& cmd, FramePacket& frame, RenderPass& pa
         .uniformRange = passInfo.resolveUniformRange,
         .dst = passInfo.resolveTarget,
         .sampleFilter = needsScaling ? tex_copy_conv::SampleFilter::Linear : tex_copy_conv::SampleFilter::Nearest,
+        .multisampledSrc = multisampledDepth,
     };
     if (needsConversion) {
       tex_copy_conv::run(cmd, convReq);
