@@ -222,6 +222,14 @@ static std::optional<TexBpRegMapping> decode_tex_bp_reg(u32 regId) {
 }
 
 // Helper to convert packed RGBA8 to Vec4<float>
+// Marks GX state changed for both the per-draw uniform rebuild and the
+// pipeline/shader-info/bind-group rebuild. Sites that only affect uniform
+// data (XF matrix and light loads) set stateDirty directly instead.
+static inline void set_state_dirty() noexcept {
+  g_gxState.stateDirty = true;
+  g_gxState.pipelineDirty = true;
+}
+
 static Vec4<float> unpack_color(u32 packed) {
   return {
       static_cast<float>(packed >> 24 & 0xFF) / 255.f,
@@ -252,7 +260,7 @@ static bool copy_xf_data(u32 addr, const u8* data, u32 len, bool bigEndian) {
       flat[i] = read_f32(data + i * 4, bigEndian);
     }
     g_gxState.mtxDirtyMask |= 1u << mtxIdx;
-    g_gxState.stateDirty = true;
+    g_gxState.stateDirty = true; // uniform-only
   } else if (addr < 0x0F0) {
     // Texture matrices (0x078-0x0EF)
     u32 texBase = addr - 0x078;
@@ -269,7 +277,7 @@ static bool copy_xf_data(u32 addr, const u8* data, u32 len, bool bigEndian) {
       flat[i] = read_f32(data + i * 4, bigEndian);
     }
     g_gxState.mtxDirtyMask |= 1u << (MaxPnMtx + mtxIdx);
-    g_gxState.stateDirty = true;
+    g_gxState.stateDirty = true; // uniform-only
     return true;
   } else if (addr >= 0x400 && addr < 0x45A) {
     // Normal matrices (0x400-0x459)
@@ -290,7 +298,7 @@ static bool copy_xf_data(u32 addr, const u8* data, u32 len, bool bigEndian) {
       }
     }
     g_gxState.mtxDirtyMask |= 1u << (MaxPnMtx + MaxTexMtx + mtxIdx);
-    g_gxState.stateDirty = true;
+    g_gxState.stateDirty = true; // uniform-only
     return true;
   } else if (addr >= 0x500 && addr < 0x5F0) {
     // Post-transform texture matrices (0x500-0x5EF)
@@ -304,7 +312,7 @@ static bool copy_xf_data(u32 addr, const u8* data, u32 len, bool bigEndian) {
     for (u32 i = 0; i < len; i++) {
       flat[startOffset + i] = read_f32(data + i * 4, bigEndian);
     }
-    g_gxState.stateDirty = true;
+    g_gxState.stateDirty = true; // uniform-only
     return true;
   } else if (addr >= 0x600 && addr < 0x680) {
     // Lights (0x600-0x67F) - 8 lights, 16 values each
@@ -363,7 +371,7 @@ static bool copy_xf_data(u32 addr, const u8* data, u32 len, bool bigEndian) {
         break; // padding (0-2)
       }
     }
-    g_gxState.stateDirty = true;
+    g_gxState.stateDirty = true; // uniform-only
     return true;
   }
   return false;
@@ -536,7 +544,7 @@ static void handle_bp(u32 value, bool bigEndian) {
         s.colorOp.bias = static_cast<GXTevBias>(bp_get(value, 2, 16));
         s.colorOp.scale = static_cast<GXTevScale>(bp_get(value, 2, 20));
       }
-      g_gxState.stateDirty = true;
+      set_state_dirty();
     }
     return;
   }
@@ -564,7 +572,7 @@ static void handle_bp(u32 value, bool bigEndian) {
         s.alphaOp.bias = static_cast<GXTevBias>(bp_get(value, 2, 16));
         s.alphaOp.scale = static_cast<GXTevScale>(bp_get(value, 2, 20));
       }
-      g_gxState.stateDirty = true;
+      set_state_dirty();
     }
     return;
   }
@@ -589,7 +597,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       break;
     }
     g_gxState.numIndStages = bp_get(value, 3, 16);
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -629,7 +637,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       s.indTexWrapT = static_cast<GXIndTexWrap>(bp_get(value, 3, 16));
       s.indTexUseOrigLOD = bp_get(value, 1, 19) != 0;
       s.indTexAddPrev = bp_get(value, 1, 20) != 0;
-      g_gxState.stateDirty = true;
+      set_state_dirty();
     }
     break;
   }
@@ -656,7 +664,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     g_gxState.lineTexOffset = static_cast<GXTexOffset>(bp_get(value, 3, 16));
     g_gxState.pointTexOffset = static_cast<GXTexOffset>(bp_get(value, 3, 19));
     g_gxState.lineHalfAspect = bp_get(value, 1, 22) != 0;
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -670,7 +678,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       g_gxState.indStages[1].scaleS = static_cast<GXIndTexScale>(bp_get(value, 4, 8));
       g_gxState.indStages[1].scaleT = static_cast<GXIndTexScale>(bp_get(value, 4, 12));
     }
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
   case 0x26: {
@@ -682,7 +690,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       g_gxState.indStages[3].scaleS = static_cast<GXIndTexScale>(bp_get(value, 4, 8));
       g_gxState.indStages[3].scaleT = static_cast<GXIndTexScale>(bp_get(value, 4, 12));
     }
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -692,7 +700,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       g_gxState.indStages[i].texMapId = static_cast<GXTexMapID>(bp_get(value, 3, i * 6));
       g_gxState.indStages[i].texCoordId = static_cast<GXTexCoordID>(bp_get(value, 3, i * 6 + 3));
     }
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -734,7 +742,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       u32 chanHw = bp_get(value, 3, 19);
       s.channelId = (chanHw < 8) ? r2c[chanHw] : GX_COLOR_NULL;
     }
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -743,7 +751,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     g_gxState.depthCompare = bp_get(value, 1, 0) != 0;
     g_gxState.depthFunc = static_cast<GXCompare>(bp_get(value, 3, 1));
     g_gxState.depthUpdate = bp_get(value, 1, 4) != 0;
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -768,7 +776,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     } else {
       g_gxState.blendMode = GX_BM_NONE;
     }
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -778,7 +786,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     bool enabled = bp_get(value, 1, 8) != 0;
     g_gxState.dstAlpha = enabled ? alpha : UINT32_MAX;
     g_gxState.pixelFmt = decode_pixel_fmt(g_gxState.bpRegCache[0x43], value);
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -787,7 +795,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     g_gxState.pixelFmt = decode_pixel_fmt(value, g_gxState.bpRegCache[0x42]);
     g_gxState.zFmt = static_cast<GXZFmt16>(bp_get(value, 3, 3));
     g_gxState.zCompLocBeforeTex = bp_get(value, 1, 6) != 0;
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -811,7 +819,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     g_gxState.alphaCompare.comp0 = static_cast<GXCompare>(bp_get(value, 3, 16));
     g_gxState.alphaCompare.comp1 = static_cast<GXCompare>(bp_get(value, 3, 19));
     g_gxState.alphaCompare.op = static_cast<GXAlphaOp>(bp_get(value, 2, 22));
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -847,7 +855,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       g_gxState.tevStages[stage1].kcSel = static_cast<GXTevKColorSel>(bp_get(value, 5, 14));
       g_gxState.tevStages[stage1].kaSel = static_cast<GXTevKAlphaSel>(bp_get(value, 5, 19));
     }
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -864,7 +872,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     std::memcpy(&a_encoded, &a_bits, sizeof(a_encoded));
     u32 b_s = g_gxState.fog.fog2Raw & 0x1F;
     g_gxState.fog.a = std::ldexp(a_encoded, static_cast<int>(b_s));
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
   // FOG1 (0xEF): B mantissa (24-bit)
@@ -874,7 +882,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     u32 b_s = g_gxState.fog.fog2Raw & 0x1F;
     float B_mant = static_cast<float>(b_m) / 8388638.0f;
     g_gxState.fog.b = std::ldexp(B_mant, static_cast<int>(b_s) - 1);
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
   // FOG2 (0xF0): B shift/exponent (5-bit)
@@ -893,7 +901,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     u32 b_m = bp_get(g_gxState.fog.fog1Raw, 24, 0);
     float B_mant = static_cast<float>(b_m) / 8388638.0f;
     g_gxState.fog.b = std::ldexp(B_mant, static_cast<int>(b_s) - 1);
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -907,7 +915,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     u32 c_sign = bp_get(value, 1, 19);
     u32 c_bits = (c_sign << 31) | (c_exp << 23) | (c_mant << 12);
     std::memcpy(&g_gxState.fog.c, &c_bits, sizeof(g_gxState.fog.c));
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -922,7 +930,7 @@ static void handle_bp(u32 value, bool bigEndian) {
         static_cast<float>(b) / 255.f,
         1.f,
     };
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -953,7 +961,7 @@ static void handle_bp(u32 value, bool bigEndian) {
           kc[2] = static_cast<float>(bp_get(value, 8, 0)) / 255.f;  // B
           kc[1] = static_cast<float>(bp_get(value, 8, 12)) / 255.f; // G
         }
-        g_gxState.stateDirty = true;
+        set_state_dirty();
       }
     } else {
       // TEV color register (11-bit signed components)
@@ -979,7 +987,7 @@ static void handle_bp(u32 value, bool bigEndian) {
           cr[2] = static_cast<float>(b) / 255.f;
           cr[1] = static_cast<float>(g) / 255.f;
         }
-        g_gxState.stateDirty = true;
+        set_state_dirty();
       }
     }
     break;
@@ -1025,7 +1033,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     }
     info.scaleExp = static_cast<s8>(info.adjScaleRaw) - 17;
 
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -1062,7 +1070,7 @@ static void handle_bp(u32 value, bool bigEndian) {
       tcs.lineOffset = bp_get(value, 1, 18) != 0;
       tcs.pointOffset = bp_get(value, 1, 19) != 0;
     }
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -1072,7 +1080,7 @@ static void handle_bp(u32 value, bool bigEndian) {
     u8 a = bp_get(value, 8, 8);
     g_gxState.clearColor[0] = static_cast<float>(r) / 255.f;
     g_gxState.clearColor[3] = static_cast<float>(a) / 255.f;
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
   case 0x50: {
@@ -1080,12 +1088,12 @@ static void handle_bp(u32 value, bool bigEndian) {
     u8 g = bp_get(value, 8, 8);
     g_gxState.clearColor[2] = static_cast<float>(b) / 255.f;
     g_gxState.clearColor[1] = static_cast<float>(g) / 255.f;
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
   case 0x51: {
     g_gxState.clearDepth = bp_get(value, 24, 0);
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -1116,7 +1124,7 @@ static void handle_bp(u32 value, bool bigEndian) {
         // GXTexRegion regs
         break;
       }
-      g_gxState.stateDirty = true;
+      set_state_dirty();
     } else {
 #ifndef NDEBUG
       Log.debug("Unhandled BP register 0x{:02X} (value 0x{:06X})", regId, value & 0xFFFFFF);
@@ -1145,7 +1153,7 @@ static void handle_cp(u8 addr, u32 value, bool bigEndian) {
     vd[GX_VA_NRM] = static_cast<GXAttrType>(bp_get(value, 2, 11));
     vd[GX_VA_CLR0] = static_cast<GXAttrType>(bp_get(value, 2, 13));
     vd[GX_VA_CLR1] = static_cast<GXAttrType>(bp_get(value, 2, 15));
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     g_gxState.clearVtxSizeCache();
     break;
   }
@@ -1161,7 +1169,7 @@ static void handle_cp(u8 addr, u32 value, bool bigEndian) {
     vd[GX_VA_TEX5] = static_cast<GXAttrType>(bp_get(value, 2, 10));
     vd[GX_VA_TEX6] = static_cast<GXAttrType>(bp_get(value, 2, 12));
     vd[GX_VA_TEX7] = static_cast<GXAttrType>(bp_get(value, 2, 14));
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     g_gxState.clearVtxSizeCache();
     break;
   }
@@ -1169,7 +1177,7 @@ static void handle_cp(u8 addr, u32 value, bool bigEndian) {
   // Matrix index A (0x30)
   case 0x30: {
     g_gxState.currentPnMtx = bp_get(value, 6, 0) / 3;
-    g_gxState.stateDirty = true;
+    set_state_dirty();
     break;
   }
 
@@ -1206,7 +1214,7 @@ static void handle_cp(u8 addr, u32 value, bool bigEndian) {
       vf.attrs[GX_VA_TEX0].cnt = static_cast<GXCompCnt>(bp_get(value, 1, 21));
       vf.attrs[GX_VA_TEX0].type = static_cast<GXCompType>(bp_get(value, 3, 22));
       vf.attrs[GX_VA_TEX0].frac = static_cast<u8>(bp_get(value, 5, 25));
-      g_gxState.stateDirty = true;
+      set_state_dirty();
       g_gxState.clearVtxSizeCache();
     }
     // VAT B registers (0x80-0x87)
@@ -1225,7 +1233,7 @@ static void handle_cp(u8 addr, u32 value, bool bigEndian) {
       vf.attrs[GX_VA_TEX4].cnt = static_cast<GXCompCnt>(bp_get(value, 1, 27));
       vf.attrs[GX_VA_TEX4].type = static_cast<GXCompType>(bp_get(value, 3, 28));
       // TEX4 frac is in VAT C
-      g_gxState.stateDirty = true;
+      set_state_dirty();
       g_gxState.clearVtxSizeCache();
     }
     // VAT C registers (0x90-0x97)
@@ -1242,7 +1250,7 @@ static void handle_cp(u8 addr, u32 value, bool bigEndian) {
       vf.attrs[GX_VA_TEX7].cnt = static_cast<GXCompCnt>(bp_get(value, 1, 23));
       vf.attrs[GX_VA_TEX7].type = static_cast<GXCompType>(bp_get(value, 3, 24));
       vf.attrs[GX_VA_TEX7].frac = static_cast<u8>(bp_get(value, 5, 27));
-      g_gxState.stateDirty = true;
+      set_state_dirty();
       g_gxState.clearVtxSizeCache();
     }
     // Array base addresses (0xA0-0xAF)
@@ -1257,7 +1265,7 @@ static void handle_cp(u8 addr, u32 value, bool bigEndian) {
         const auto newStride = static_cast<u8>(value);
         if (array.stride != newStride) {
           array.stride = newStride;
-          g_gxState.stateDirty = true;
+          set_state_dirty();
         }
       }
     }
@@ -1301,31 +1309,31 @@ static void handle_xf(const u8* data, u32& pos, u32 size, bool bigEndian) {
       case 0x09:
         // numChans
         g_gxState.numChans = val;
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       case 0x0A:
         // Ambient color 0
         g_gxState.colorChannelState[GX_COLOR0].ambColor = unpack_color(val);
         g_gxState.colorChannelState[GX_ALPHA0].ambColor = unpack_color(val);
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       case 0x0B:
         // Ambient color 1
         g_gxState.colorChannelState[GX_COLOR1].ambColor = unpack_color(val);
         g_gxState.colorChannelState[GX_ALPHA1].ambColor = unpack_color(val);
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       case 0x0C:
         // Material color 0
         g_gxState.colorChannelState[GX_COLOR0].matColor = unpack_color(val);
         g_gxState.colorChannelState[GX_ALPHA0].matColor = unpack_color(val);
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       case 0x0D:
         // Material color 1
         g_gxState.colorChannelState[GX_COLOR1].matColor = unpack_color(val);
         g_gxState.colorChannelState[GX_ALPHA1].matColor = unpack_color(val);
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       case 0x0E:
       case 0x0F:
@@ -1353,7 +1361,7 @@ static void handle_xf(const u8* data, u32& pos, u32 size, bool bigEndian) {
           }
           u32 lightMask = lightsLo | (lightsHi << 4);
           g_gxState.colorChannelState[chanId].lightMask = GX::LightMask{lightMask};
-          g_gxState.stateDirty = true;
+          set_state_dirty();
         }
         break;
       }
@@ -1365,7 +1373,7 @@ static void handle_xf(const u8* data, u32& pos, u32 size, bool bigEndian) {
           assert(texMtx >= 0 && texMtx <= GXTexMtx::GX_IDENTITY);
           g_gxState.tcgs[i].mtx = texMtx;
         }
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       }
       case 0x19: {
@@ -1373,7 +1381,7 @@ static void handle_xf(const u8* data, u32& pos, u32 size, bool bigEndian) {
         for (u32 i = 0; i < 4 && (i + 4) < MaxTexCoord; i++) {
           g_gxState.tcgs[i + 4].mtx = static_cast<GXTexMtx>(bp_get(val, 6, i * 6));
         }
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       }
       case 0x1A:
@@ -1438,14 +1446,14 @@ static void handle_xf(const u8* data, u32& pos, u32 size, bool bigEndian) {
             proj.m1[2] = p3;
             proj.m3[2] = -1.0f;
           }
-          g_gxState.stateDirty = true;
+          set_state_dirty();
         }
         break;
       }
       case 0x3F:
         // numTexGens
         g_gxState.numTexGens = val;
-        g_gxState.stateDirty = true;
+        set_state_dirty();
         break;
       default:
         // TexGen config (0x40-0x4F) and post-transform (0x50-0x5F)
@@ -1476,14 +1484,14 @@ static void handle_xf(const u8* data, u32& pos, u32 size, bool bigEndian) {
             if (srcRow < 13) {
               tcg.src = rowToSrc[srcRow];
             }
-            g_gxState.stateDirty = true;
+            set_state_dirty();
           }
         } else if (reg >= 0x50 && reg <= 0x5F) {
           u32 tcIdx = reg - 0x50;
           if (tcIdx < MaxTexCoord) {
             g_gxState.tcgs[tcIdx].postMtx = static_cast<GXPTTexMtx>(bp_get(val, 6, 0) + 64);
             g_gxState.tcgs[tcIdx].normalize = bp_get(val, 1, 8) != 0;
-            g_gxState.stateDirty = true;
+            set_state_dirty();
           }
         } else {
 #ifndef NDEBUG
@@ -1648,12 +1656,33 @@ static void handle_draw_unmerged(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, g
     }
   }
 
-  PipelineConfig config{};
-  populate_pipeline_config(config, prim, fmt);
-  const auto info = build_shader_info(config.shaderConfig);
-  resolve_sampled_textures(info);
-  const auto bindGroups = build_bind_groups(info);
-  const auto pipeline = gfx::pipeline_ref(config);
+  // When only uniform data (matrices, lights) changed since the previous
+  // draw, the pipeline config, shader info, texture bindings, and bind
+  // groups are guaranteed unchanged — reuse them instead of rebuilding.
+  static struct {
+    bool valid = false;
+    GXPrimitive prim;
+    GXVtxFmt fmt;
+    ShaderInfo info;
+    GXBindGroups bindGroups;
+    gfx::PipelineRef pipeline;
+  } s_lastDrawState;
+  auto& cached = s_lastDrawState;
+  if (g_gxState.pipelineDirty || !cached.valid || cached.prim != prim || cached.fmt != fmt) {
+    PipelineConfig config{};
+    populate_pipeline_config(config, prim, fmt);
+    cached.info = build_shader_info(config.shaderConfig);
+    resolve_sampled_textures(cached.info);
+    cached.bindGroups = build_bind_groups(cached.info);
+    cached.pipeline = gfx::pipeline_ref(config);
+    cached.prim = prim;
+    cached.fmt = fmt;
+    cached.valid = true;
+    g_gxState.pipelineDirty = false;
+  }
+  const auto& info = cached.info;
+  const auto& bindGroups = cached.bindGroups;
+  const auto pipeline = cached.pipeline;
 
   uint32_t instanceCount = 1;
   if (prim == GX_LINES) {
@@ -1746,7 +1775,7 @@ void handle_aurora(const u8* data, u32& pos, u32 size, bool bigEndian) {
       array.le = le;
       // Only drop the cached upload when the backing array actually changes.
       array.cachedRange = {};
-      g_gxState.stateDirty = true;
+      set_state_dirty();
     }
   } else if (subCmd == GX_LOAD_AURORA_TEXOBJ) {
     CHECK(pos + 34 <= size, "GX_LOAD_AURORA_TEXOBJ read overrun");
@@ -1775,7 +1804,7 @@ void handle_aurora(const u8* data, u32& pos, u32 size, bool bigEndian) {
     slot.texDataVersion = read_u32(data + pos, bigEndian);
     pos += 4;
     slot.set_no_cache(false); // Reset no-cache flag
-    g_gxState.stateDirty = true;
+    set_state_dirty();
   } else if (subCmd == GX_LOAD_AURORA_TLUT) {
     CHECK(pos + 23 <= size, "GX_LOAD_AURORA_TLUT read overrun");
     const auto idx = data[pos];
@@ -1793,7 +1822,7 @@ void handle_aurora(const u8* data, u32& pos, u32 size, bool bigEndian) {
     slot.tlutDataVersion = read_u32(data + pos, bigEndian);
     pos += 4;
     slot.set_no_cache(false); // Reset no-cache flag
-    g_gxState.stateDirty = true;
+    set_state_dirty();
   } else if (subCmd == GX2_SET_POLYGON_OFFSET) {
     CHECK(pos + 20 <= size, "GX2_SET_POLYGON_OFFSET read overrun");
     g_gxState.frontOffset = read_f32(data + pos, bigEndian);
@@ -1806,7 +1835,7 @@ void handle_aurora(const u8* data, u32& pos, u32 size, bool bigEndian) {
     pos += 4;
     g_gxState.clamp = read_f32(data + pos, bigEndian);
     pos += 4;
-    g_gxState.stateDirty = true;
+    set_state_dirty();
   } else if (subCmd == GX_LOAD_AURORA_DESTROY_TEXOBJ) {
     CHECK(pos + 4 <= size, "GX_LOAD_AURORA_DESTROY_TEXOBJ read overrun");
     evict_texture_object(read_u32(data + pos, bigEndian));

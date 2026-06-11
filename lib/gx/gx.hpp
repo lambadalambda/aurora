@@ -381,6 +381,11 @@ struct GXState {
   u8 numTevStages = 0;
   u8 numTexGens = 0;
   bool stateDirty = true;
+  // Set alongside stateDirty for changes that can affect the pipeline
+  // config, shader info, or texture bindings. Pure uniform-data changes
+  // (XF matrix/light loads) leave it clear, letting consecutive draws reuse
+  // the previous draw's pipeline state (see handle_draw_unmerged).
+  bool pipelineDirty = true;
   std::array<u32, 0x100> bpRegCache = [] {
     std::array<u32, 0x100> regs{};
     regs[0xFE] = 0x00FFFFFF;

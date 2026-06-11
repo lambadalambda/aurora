@@ -1126,6 +1126,7 @@ void end_frame(EndFrameCallback callback) {
     array.cachedRange = {};
   }
   gx::g_gxState.mtxDirtyMask = (1u << (gx::MaxPnMtx + gx::MaxTexMtx + gx::MaxPnMtx)) - 1;
+  gx::g_gxState.pipelineDirty = true;
   end_pipeline_frame();
   ++g_frameIndex;
   g_recordingFrame = nullptr;
